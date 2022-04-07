@@ -13,4 +13,7 @@ A. Sivakumaran, A. S. Alfa and B. T. Maharaj, "An Empirical Analysis of the Effe
 I. Ngomane, M. Velempini and S. V. Dlamini, "The detection of the spectrum sensing data falsification attack in cognitive radio ad hoc networks," 2018 Conference on Information Communications Technology and Society (ICTAS), 2018, pp. 1-5, doi: 10.1109/ICTAS.2018.8368742.
 J. Feng, X. Du, G. Zhang and W. Shi, “Securing multi-channel selection using distributed trust in cognitive radio ad hoc networks,” in Ad Hoc Networks, vol. 61, pp. 85-94, 2017, https://doi.org/10.1016/j.adhoc.2017.03.009
 
-List of Simulators https://www-sciencedirect-com.proxy1.cl.msu.edu/science/article/pii/S1084804520303039 https://doi-org.proxy1.cl.msu.edu/10.1016/j.jnca.2020.102833
+List of Simulators https://www-sciencedirect-com.proxy1.cl.msu.edu/science/article/pii/S1084804520303039 https://doi-org.proxy1.cl.msu.edu/10.1016/j.jnca.2020.102833  
+GNU Simulator https://wiki.gnuradio.org/index.php?title=Simulation_example:_FSK  
+NS2 Simulator https://faculty.uml.edu//tricia_chigan/Research/CRCN_Simulator.htm
+
