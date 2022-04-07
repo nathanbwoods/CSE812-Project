@@ -12,3 +12,5 @@ H. Chen, M. Zhou, L. Xie, K. Wang and J. Li, "Joint Spectrum Sensing and Resourc
 A. Sivakumaran, A. S. Alfa and B. T. Maharaj, "An Empirical Analysis of the Effect of Malicious Users in Decentralised Cognitive Radio Networks," 2019 IEEE 89th Vehicular Technology Conference (VTC2019-Spring), 2019, pp. 1-5, doi: 10.1109/VTCSpring.2019.8746414.
 I. Ngomane, M. Velempini and S. V. Dlamini, "The detection of the spectrum sensing data falsification attack in cognitive radio ad hoc networks," 2018 Conference on Information Communications Technology and Society (ICTAS), 2018, pp. 1-5, doi: 10.1109/ICTAS.2018.8368742.
 J. Feng, X. Du, G. Zhang and W. Shi, “Securing multi-channel selection using distributed trust in cognitive radio ad hoc networks,” in Ad Hoc Networks, vol. 61, pp. 85-94, 2017, https://doi.org/10.1016/j.adhoc.2017.03.009
+
+List of Simulators https://www-sciencedirect-com.proxy1.cl.msu.edu/science/article/pii/S1084804520303039 https://doi-org.proxy1.cl.msu.edu/10.1016/j.jnca.2020.102833
