@@ -1,6 +1,7 @@
 import math
 import random
 import matplotlib.pyplot as plt
+import numpy as np
 
 num_iterations = 5000
 
@@ -27,15 +28,15 @@ class SensorNetwork:
         """
         signal = random.randint(0, 1)
         i = 0
-        data[i, clock, 0] = signal
+        self.data[i, self.clock, 0] = signal
         
         for user in self.users:
             i += 1
-            user.update(self.primary_user_strength(user, signal), clock)
-            data[i, clock, 0] = user.get_action()
-            data[i, clock, 1] = user.get_belief()
+            user.update(self.primary_user_strength(user, signal), self.clock)
+            self.data[i, self.clock, 0] = user.get_action()
+            self.data[i, self.clock, 1] = user.get_belief()
             
-        clock += 1
+        self.clock += 1
         return signal
         
     def primary_user_strength(self, user, signal):
@@ -61,6 +62,7 @@ class SecondaryUser(User):
     """
     A "good faith" SU, no malicious behavior
     """
+    num_users = 0
     trustValue = 0 #user's evaluation of its own trustworthiness, scaled -100 to 100
     users = np.ndarray((num_users,1)) #other users that this device knows of
     trustValues = np.zeros_like(users) #perceived trust values of other users
@@ -108,7 +110,7 @@ class SecondaryUser(User):
         
         if x < 0.3334: #take channel process
             if primary_user_value == 0 and channel_value == 0:
-                if trustValue > trustValues.max():
+                if self.trustValue > self.trustValues.max():
                     self.channelAllocated = True
         elif x < 0.6667: # tri-message trust sync
             self.synchronize_trust()
@@ -117,20 +119,20 @@ class SecondaryUser(User):
                     
             
     
-    def get_action():
+    def get_action(self):
         """
         :return: boolean true if channel is allocated to this SU
         """
-        return channelAllocated
+        return self.channelAllocated
     
-    def get_belief():
+    def get_belief(self):
         """
         :return: boolean true if channel is believed to be allocated to PU
         """
-        return primary_user_value
+        return self.primary_user_value
     
-    def get_trust_value():
-        return trustValue
+    def get_trust_value(self):
+        return self.trustValue
 
 
 class MaliciousUser(SecondaryUser):
