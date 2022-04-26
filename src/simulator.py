@@ -1,9 +1,11 @@
 import math
 import random
 import matplotlib.pyplot as plt
+import pandas as pd
 import numpy as np
 
-num_iterations = 5
+num_iterations = 50
+malicious_proportion = 0.2
 
 
 class SensorNetwork:
@@ -13,7 +15,6 @@ class SensorNetwork:
     - Know what Secondary Users exist, and what they believe/do
     """
     users = []  # devices in the network
-    numChannels = 1  # available channels
     data = []  # row 0 = PU, row 1-n = SU; z0 = channel use, z1=belief
     clock = 0
 
@@ -30,103 +31,126 @@ class SensorNetwork:
         signal = random.randint(0, 1)
         self.data[0, self.clock, 0] = signal
 
+        # Broadcast current beliefs to neighbors
+        for user in self.users:
+            user.update(self.clock, self.primary_user_strength(user, signal))
+
+        # Update personal beliefs based on information received from neighbors, vote
+        for user in self.users:
+            user.update_pu_belief()
+            user.update_trust_values()
+            user.update_pu_belief()
+            user.vote()
+
+        # Tally votes, collect state information
         for index, user in enumerate(self.users):
-            user.update(self.primary_user_strength(user, signal), self.clock, 0)
-            self.data[index, self.clock, 0] = user.get_action()
-            self.data[index, self.clock, 1] = user.get_belief()
+            user.tally_votes()
+            self.data[index, self.clock, 0] = user.is_channel_allocated()
+            self.data[index, self.clock, 1] = user.is_primary_active()
 
         self.clock += 1
-        return signal
 
     def primary_user_strength(self, user, signal):
         distance = math.sqrt((user.x - self.primary_user.x) ** 2 + (user.y - self.primary_user.y) ** 2)
-        noise = (random.random() - 0.5) / 2
+        noise = (random.random() - 0.5) / 4
         return signal + noise * distance ** 2
 
 
-class User:
-    x = 0  # x position
-    y = 0  # y position
-    clock = 0  # Keeps track of the logical time for a device
-    id_value = 0  # This user's id for distinguishability
-    channel_allocated = False  # Boolean, is a the channel allocated for this device
-    primary_user_value = False  # The belief on whether or not primary user is in the channel
-    user_list = []  # neighbors this device can broadcast to
+class PrimaryUser:
+    x = 0
+    y = 0
 
-    def __init__(self, id_val, x, y):
-        self.id_value = id_val
+    def __init__(self, x, y):
         self.x = x
         self.y = y
 
 
-class SecondaryUser(User):
+class SecondaryUser:
     """
     A "good faith" SU, no malicious behavior
     """
-    trust_values = []  # The perceived trust values of other users
-    channel_allocated = False
+    x = 0  # x position
+    y = 0  # y position
+    clock = 0  # Keeps track of the logical time for a device
+    id = 0  # This user's id for distinguishability
+    channel_allocated = False  # Boolean, is the channel allocated for this device
+    primary_user_value = False  # The belief on whether or not primary user is in the channel
+    neighbors = []  # neighbors this device can broadcast to
+    trust_values = {}  # The perceived trust values of other users
+    received_activity = {}  # Received values for activity of primary user in this epoch
+    received_trust = {}  # Received values for trustworthiness of other users in this epoch
+    ballot = {}  # Received votes for bandwidth allocation in this epoch
 
-    def __init__(self, id_val, x, y, neighbors):
-        self.trust_values = [100] * len(neighbors)
-        self.user_list = neighbors
-        super().__init__(id_val, x, y)
+    def __init__(self, id_val, x, y):
+        self.id = id_val
+        self.x = x
+        self.y = y
 
-    def set_users(self, neighbors):
-        self.user_list = neighbors
+    def set_neighbors(self, neighbors):
+        self.neighbors = neighbors
+        self.trust_values = {neighbor.id: 1 / len(neighbors) for neighbor in neighbors}
 
     # Inspired by the following StackOverflow thread
     # https://stackoverflow.com/questions/10324015/fitness-proportionate-selection-roulette-wheel-selection-in-python
-    def choose_next_broadcaster(self):
-        cumulative_trust = sum([user.trust_value for user in self.user_list])
-        selection_probs = [user.trust_value / cumulative_trust for user in self.user_list]
-        return random.choices(self.user_list, weights=selection_probs)
+    def vote(self):
+        choice = random.choices(self.neighbors, weights=self.trust_values)[0]
+        for neighbor in self.neighbors:
+            neighbor.receive_vote(choice)
+        self.received_activity = {}
+        self.received_trust = {}
 
-    def synchronize_trust(self):
+    def receive_vote(self, node):
+        if node.id in self.ballot:
+            self.ballot[node.id] += 1
+        elif len(self.ballot.keys()) > 2:
+            pop_list = []
+            for key in self.ballot.keys():
+                if self.ballot[key] > 1:
+                    self.ballot[key] -= 1
+                else:
+                    pop_list.append(key)
+            for key in pop_list:
+                self.ballot.pop(key)
+        else:
+            self.ballot[node.id] = 1
+
+    def tally_votes(self):
+        for idx, votes in self.ballot.items():
+            if idx == self.id:
+                self.channel_allocated = True
+
+    def update(self, clock, primary_user_value):
+        self.clock = clock
+        self.primary_user_value = int(primary_user_value > 0.5)
+        self.ballot = {}
+        self.broadcast()
+
+    def update_trust_values(self):
         """
         Communicate/receive trust values from other users.
         Ignore broadcast procedures, they can get values from other users at any time.
         """
-        beliefs = []
+        neighbor_ids = [neighbor.id for neighbor in self.neighbors]
 
-        for user in self.user_list:
-            # Iterate through the list of all users, get their belief
-            # of if the PU is present
-            # get_belief returns a bool, which we convert to an int
-            beliefs.append(int(user.get_belief()))
+        trust_df = pd.DataFrame(self.received_trust)
+        trust_df['average'] = trust_df.mean(axis=0)
 
-        # if this is true then all nodes are reporting that
-        # the PU is present except for 1 - the MU
-        if sum(beliefs) == len(self.user_list) - 1:
-            MU_index = beliefs.index(0)
-            self.user_list[MU_index].trust_value = max(self.user_list[MU_index].trust_value - 10,
-                                                       0)  # bound CTVs between 0 and 200
+        new_trust_values = {}
 
-        # if this is true all users are reporting that
-        # the PU is NOT present except for 1 - the MU
-        elif sum(beliefs) == 1:
-            MU_index = beliefs.index(1)
-            self.user_list[MU_index].trust_value = max(self.user_list[MU_index].trust_value - 15,
-                                                       0)  # bound CTVs between 0 and 200
+        for idx in trust_df.columns:
+            if idx in neighbor_ids:
+                sse_trust = ((trust_df[idx] - trust_df['average']) ** 2).mean() ** 0.5
+                disagreement_penalty = -int(self.received_activity[idx] != self.primary_user_value)
+                new_trust_values[idx] = self.trust_values[
+                                           idx] * 0.6 + 0.2 * 1.1 ** -sse_trust + 0.2 * disagreement_penalty
 
-        else:
-            mean = self.trust_values
-            # as there has been no detection of an SSDF attack by either devices
-            # the nodes are rewarded by having their trust values incremented by 5
-            for user in self.user_list:
-                mean += user.get_trust_values()
+        sum_new_trust = sum(new_trust_values.values())
+        self.trust_values = {idx: value / sum_new_trust for idx, value in new_trust_values.items()}
 
-            mean = (1 / len(self.user_list)) * mean
-
-            self.trust_value = min(mean + 5, 200)  # bound CTV between 0 and 200
-
-    def receive_broadcast(self, sender_id, trust_value_other_device):
-        """
-        Recieve a broadcast of trust values from another device and update
-        the instance's trust values accordingly
-        """
-        # compare the nodes trust values and use that as a weight to update the trust
-        # values of the device
-        self.synchronize_trust(trust_value_other_device)
+    def update_pu_belief(self):
+        weighted_avg = sum(self.trust_values[neighbor.id] * self.received_activity[neighbor.id] for neighbor in
+                           self.neighbors) * 0.8 + 0.2 * self.primary_user_value
+        self.primary_user_value = weighted_avg > 0.5
 
     def broadcast(self):
         """
@@ -134,41 +158,30 @@ class SecondaryUser(User):
         """
         # For all users in the network, make them recieve
         # the trust values of this particular instance
-        for neighbor in self.user_list:
-            neighbor.receive_broadcast(self.trust_values)
+        for neighbor in self.neighbors:
+            neighbor.receive_broadcast(self.id, self.trust_values, self.primary_user_value)
 
-    def update(self, primary_user_value, clock, channel_value):
+    def receive_broadcast(self, sender_id, trust_values, pu_presence):
         """
-        Decide what actions to take, synchronize trust? Broadcast values? Use channel?
-        :return:
+        Recieve a broadcast of trust values from another device and update
+        the instance's trust values accordingly
         """
-        self.clock = clock
-        self.primary_user_value = primary_user_value
-        x = random.random()
+        # compare the nodes trust values and use that as a weight to update the trust
+        # values of the device
+        self.received_trust[sender_id] = trust_values
+        self.received_activity[sender_id] = pu_presence
 
-        if x < 0.3334:  # take channel process
-            if primary_user_value == 0 and channel_value == 0:
-                # if the the id of the device matches the id of
-                # the device chosen from our roulette wheel function
-                # allocate it the channel
-                if self.id_val == self.choose_next_broadcaster().id_val:  # highest in network
-                    self.channelAllocated = True
-        elif x < 0.6667:  # tri-message trust sync
-            self.synchronize_trust()
-        else:  # broadcast
-            self.broadcast()
-
-    def get_action(self):
+    def is_channel_allocated(self):
         """:
         return: boolean true if channel is allocated to this SU
         """
         return self.channel_allocated
 
-    def get_belief(self):
+    def is_primary_active(self):
         """
         :return: boolean true if channel is believed to be allocated to PU
         """
-        return User.primary_user_value
+        return self.primary_user_value
 
     def get_trust_values(self):
         """
@@ -187,12 +200,16 @@ class MaliciousUser(SecondaryUser):
     consensus.
     """
 
+    def broadcast(self):
+        for neighbor in self.neighbors:
+            neighbor.receive_broadcast(self.id, self.trust_values, not self.primary_user_value)
+
     def SelfishSSDF(self):
-        if not self.get_belief():
+        if not self.is_primary_active():
             self.primary_user_value = True
 
     def InterferenceSSDF(self):
-        if self.get_belief():
+        if self.is_primary_active():
             self.primary_user_value = False
 
     def ConfusingSSDF(self):
@@ -207,8 +224,17 @@ def generate_point(mean_x, mean_y, deviation_x, deviation_y):
     return random.gauss(mean_x, deviation_x), random.gauss(mean_y, deviation_y)
 
 
+def discover_neighbors(node, user_list):
+    import scipy.spatial as spatial
+
+    points = np.array([(user.x, user.y) for user in user_list])
+    point_tree = spatial.cKDTree(points)
+    neighbor_indices = point_tree.query_ball_point((node.x, node.y), 0.15)
+    return [user_list[idx] for idx in neighbor_indices]
+
+
 def initializeUsers():
-    users = []
+    new_users = []
     # Add 1 primary User
     # Add Secondary Users to network
     cluster_mean_x = 1
@@ -218,7 +244,7 @@ def initializeUsers():
     point_deviation_x = 0.2
     point_deviation_y = 0.2
 
-    number_of_clusters = 5
+    number_of_clusters = 3
     points_per_cluster = 50
 
     cluster_centers = [generate_point(cluster_mean_x,
@@ -234,21 +260,30 @@ def initializeUsers():
               for center_x, center_y in cluster_centers
               for _ in range(points_per_cluster)]
 
+    malicious_user_idx = []
     for idx, p in enumerate(points):
-        users.append(SecondaryUser(idx, p[0], p[1]))
-    return users
+        x = random.random()
+        if x > malicious_proportion:
+            new_users.append(SecondaryUser(idx, p[0], p[1]))
+        else:
+            new_users.append(MaliciousUser(idx, p[0], p[1]))
+            malicious_user_idx.append(idx)
+
+    for user in new_users:
+        user.set_neighbors(discover_neighbors(user, new_users))
+    return new_users, malicious_user_idx
 
 
 def plot_users(users, primary_user):
     plt.scatter([user.x for user in users], [user.y for user in users])
     plt.scatter(primary_user.x, primary_user.y, c="red")
+    plt.scatter([user.x for user in users[20].neighbors], [user.y for user in users[20].neighbors], c="yellow")
     plt.show()
 
 
 if __name__ == '__main__':
-    users = initializeUsers()
-    net = SensorNetwork(users, SecondaryUser(-1, 1, 1))
-    vals = []
+    users, malicious_users = initializeUsers()
+    net = SensorNetwork(users, PrimaryUser(1, 1))
     for i in range(num_iterations):
         net.update_users()
-    plot_users(users, SecondaryUser(-1, 1, 1))
+    plot_users(users, PrimaryUser(1, 1))
