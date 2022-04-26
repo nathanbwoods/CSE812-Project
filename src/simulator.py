@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 
-num_iterations = 50
+num_iterations = 10
 malicious_proportion = 0.2
 
 
@@ -15,13 +15,13 @@ class SensorNetwork:
     - Know what Secondary Users exist, and what they believe/do
     """
     users = []  # devices in the network
-    data = []  # row 0 = PU, row 1-n = SU; z0 = channel use, z1=belief
+    data = []  # row 0 to n - 1 = SU; z0 = channel use, z1=belief
     clock = 0
 
     def __init__(self, user_list, primary_user):
         self.users = user_list
         self.primary_user = primary_user
-        self.data = np.zeros(shape=(len(users) + 1, num_iterations, 2))
+        self.data = np.zeros(shape=(len(users), num_iterations, 2))
 
     def update_users(self):
         """
@@ -49,6 +49,9 @@ class SensorNetwork:
             self.data[index, self.clock, 1] = user.is_primary_active()
 
         self.clock += 1
+
+    def get_data(self):
+        return self.data
 
     def primary_user_strength(self, user, signal):
         distance = math.sqrt((user.x - self.primary_user.x) ** 2 + (user.y - self.primary_user.y) ** 2)
@@ -116,10 +119,11 @@ class SecondaryUser:
 
     def tally_votes(self):
         for idx, votes in self.ballot.items():
-            if idx == self.id:
+            if idx == self.id and not self.primary_user_value:
                 self.channel_allocated = True
 
     def update(self, clock, primary_user_value):
+        self.channel_allocated = False
         self.clock = clock
         self.primary_user_value = int(primary_user_value > 0.5)
         self.ballot = {}
@@ -229,7 +233,7 @@ def discover_neighbors(node, user_list):
 
     points = np.array([(user.x, user.y) for user in user_list])
     point_tree = spatial.cKDTree(points)
-    neighbor_indices = point_tree.query_ball_point((node.x, node.y), 0.15)
+    neighbor_indices = point_tree.query_ball_point((node.x, node.y), 0.3)
     return [user_list[idx] for idx in neighbor_indices]
 
 
@@ -239,13 +243,13 @@ def initializeUsers():
     # Add Secondary Users to network
     cluster_mean_x = 1
     cluster_mean_y = 1
-    cluster_deviation_x = 1
-    cluster_deviation_y = 1
+    cluster_deviation_x = 0.5
+    cluster_deviation_y = 0.5
     point_deviation_x = 0.2
     point_deviation_y = 0.2
 
     number_of_clusters = 3
-    points_per_cluster = 50
+    points_per_cluster = 20
 
     cluster_centers = [generate_point(cluster_mean_x,
                                       cluster_mean_y,
@@ -274,16 +278,19 @@ def initializeUsers():
     return new_users, malicious_user_idx
 
 
-def plot_users(users, primary_user):
+def plot_users(users, primary_user, malicious_users):
     plt.scatter([user.x for user in users], [user.y for user in users])
     plt.scatter(primary_user.x, primary_user.y, c="red")
-    plt.scatter([user.x for user in users[20].neighbors], [user.y for user in users[20].neighbors], c="yellow")
+    plt.scatter([users[i].x for i in malicious_users], [users[i].y for i in malicious_users], c="yellow")
     plt.show()
 
 
 if __name__ == '__main__':
     users, malicious_users = initializeUsers()
-    net = SensorNetwork(users, PrimaryUser(1, 1))
+    primary = PrimaryUser(1, 1)
+    net = SensorNetwork(users, primary)
     for i in range(num_iterations):
         net.update_users()
-    plot_users(users, PrimaryUser(1, 1))
+    plot_users(users, primary, malicious_users)
+    data = net.get_data()
+    print([data[x] for x in malicious_users])
