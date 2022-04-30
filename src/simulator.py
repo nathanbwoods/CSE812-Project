@@ -3,9 +3,10 @@ import random
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
+import pickle
 
 num_iterations = 10
-malicious_proportion = 0.2
+malicious_proportion = 0.4
 
 
 class SensorNetwork:
@@ -14,14 +15,13 @@ class SensorNetwork:
     - Know if primary user is active
     - Know what Secondary Users exist, and what they believe/do
     """
-    users = []  # devices in the network
-    data = []  # row 0 to n - 1 = SU; z0 = channel use, z1=belief
     clock = 0
 
     def __init__(self, user_list, primary_user):
         self.users = user_list
         self.primary_user = primary_user
-        self.data = np.zeros(shape=(len(users), num_iterations, 2))
+        self.channel_allocated = np.zeros(shape=(len(users), num_iterations))
+        self.primary_active = np.zeros(shape=(len(users) + 1, num_iterations))
 
     def update_users(self):
         """
@@ -29,7 +29,6 @@ class SensorNetwork:
         :return:
         """
         signal = random.randint(0, 1)
-        self.data[0, self.clock, 0] = signal
 
         # Broadcast current beliefs to neighbors
         for user in self.users:
@@ -45,13 +44,18 @@ class SensorNetwork:
         # Tally votes, collect state information
         for index, user in enumerate(self.users):
             user.tally_votes()
-            self.data[index, self.clock, 0] = user.is_channel_allocated()
-            self.data[index, self.clock, 1] = user.is_primary_active()
+            self.channel_allocated[index, self.clock] = user.is_channel_allocated()
+            self.primary_active[index, self.clock] = user.is_primary_active()
+
+        self.primary_active[len(self.users), self.clock] = signal
 
         self.clock += 1
 
-    def get_data(self):
-        return self.data
+    def get_activity_logs(self):
+        return self.primary_active
+
+    def get_allocation_logs(self):
+        return self.channel_allocated
 
     def primary_user_strength(self, user, signal):
         distance = math.sqrt((user.x - self.primary_user.x) ** 2 + (user.y - self.primary_user.y) ** 2)
@@ -248,8 +252,8 @@ def initializeUsers():
     point_deviation_x = 0.2
     point_deviation_y = 0.2
 
-    number_of_clusters = 3
-    points_per_cluster = 20
+    number_of_clusters = 1
+    points_per_cluster = 75
 
     cluster_centers = [generate_point(cluster_mean_x,
                                       cluster_mean_y,
@@ -292,5 +296,9 @@ if __name__ == '__main__':
     for i in range(num_iterations):
         net.update_users()
     plot_users(users, primary, malicious_users)
-    data = net.get_data()
-    print([data[x] for x in malicious_users])
+
+    with open("sim_allocation.pickle", "wb") as f:
+        pickle.dump(net.get_allocation_logs(), f)
+
+    with open("sim_activity.pickle", "wb") as f:
+        pickle.dump(net.get_activity_logs(), f)
